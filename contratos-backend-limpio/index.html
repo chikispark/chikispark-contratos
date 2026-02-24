@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Contrato CHIKISPARK</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+body{ font-family: Arial; background:#f4f4f4; padding:20px; }
+#contrato{ max-width:800px; margin:auto; background:white; padding:30px; border-radius:10px; box-shadow:0 4px 15px rgba(0,0,0,0.1);}
+input{width:100%; padding:10px; margin-bottom:15px; border:1px solid #ccc; border-radius:6px;}
+canvas{border:2px solid #ccc; border-radius:6px; width:100%; height:200px; touch-action:none;}
+button{padding:15px; background:#ff7a00; color:white; border:none; border-radius:8px; width:100%; margin-top:10px; cursor:pointer;}
+button:hover{background:#e66c00;}
+.aceptacion{border:2px solid #ff7a00; padding:15px; border-radius:8px; margin-top:20px;}
+</style>
+</head>
+<body>
+
+<div id="contrato">
+<h2>CONTRATO DE CELEBRACIONES CHIKISPARK</h2>
+Número contrato: <span id="numeroContrato"></span><br>
+Fecha: <span id="fechaContrato"></span>
+
+<h3>DATOS DEL ARRENDATARIO</h3>
+<input id="nombre" placeholder="Nombre completo">
+<input id="nif" placeholder="NIF">
+<input id="direccion" placeholder="Dirección completa">
+<input id="emailCliente" placeholder="Email del cliente">
+
+<h3>DATOS ECONÓMICOS</h3>
+<input id="fianza" placeholder="Fianza €">
+<input id="alquiler" placeholder="Alquiler €">
+
+<h3>HORAS</h3>
+<label><input type="radio" name="horas" value="3 HORAS"> 3 HORAS</label>
+<label><input type="radio" name="horas" value="4 HORAS"> 4 HORAS</label>
+<label><input type="radio" name="horas" value="5 HORAS"> 5 HORAS</label>
+<label><input type="radio" name="horas" value="6 HORAS"> 6 HORAS</label>
+<label><input type="radio" name="horas" value="TODO EL DÍA"> TODO EL DÍA</label>
+
+<div class="aceptacion">
+<label><input type="checkbox" id="acepta"> He leído y acepto las condiciones del contrato.</label>
+</div>
+
+<h3>FIRMA</h3>
+<canvas id="firma"></canvas>
+<button onclick="borrarFirma()">Borrar firma</button>
+<button onclick="firmarEnviar()">Firmar, descargar y enviar</button>
+
+</div>
+
+<script>
+const { jsPDF } = window.jspdf;
+
+const numeroContrato = "CS-" + Date.now();
+document.getElementById("numeroContrato").innerText = numeroContrato;
+document.getElementById("fechaContrato").innerText = new Date().toLocaleDateString();
+
+const canvas = document.getElementById("firma");
+canvas.width = canvas.offsetWidth;
+canvas.height = 200;
+const ctx = canvas.getContext("2d");
+ctx.strokeStyle = "black"; ctx.lineWidth = 2;
+let firmando = false;
+
+canvas.addEventListener("mousedown", e => { firmando=true; ctx.beginPath(); ctx.moveTo(e.offsetX,e.offsetY); });
+canvas.addEventListener("mousemove", e => { if(!firmando) return; ctx.lineTo(e.offsetX,e.offsetY); ctx.stroke(); });
+canvas.addEventListener("mouseup", ()=>firmando=false);
+canvas.addEventListener("touchstart", e=>{ e.preventDefault(); firmando=true; const rect=canvas.getBoundingClientRect(); const touch=e.touches[0]; ctx.beginPath(); ctx.moveTo(touch.clientX-rect.left,touch.clientY-rect.top);});
+canvas.addEventListener("touchmove", e=>{ e.preventDefault(); if(!firmando) return; const rect=canvas.getBoundingClientRect(); const touch=e.touches[0]; ctx.lineTo(touch.clientX-rect.left,touch.clientY-rect.top); ctx.stroke();});
+canvas.addEventListener("touchend", ()=>firmando=false);
+
+function borrarFirma(){ ctx.clearRect(0,0,canvas.width,canvas.height); }
+
+async function firmarEnviar(){
+  if(!document.getElementById("acepta").checked){ alert("Debe aceptar el contrato"); return; }
+
+  const nombre = document.getElementById("nombre").value.trim();
+  const nif = document.getElementById("nif").value.trim();
+  const direccion = document.getElementById("direccion").value.trim();
+  const fianza = document.getElementById("fianza").value.trim();
+  const alquiler = document.getElementById("alquiler").value.trim();
+  const horas = document.querySelector('input[name="horas"]:checked')?.value;
+  const emailCliente = document.getElementById("emailCliente").value.trim();
+
+  if(!nombre||!nif||!direccion||!fianza||!alquiler||!horas||!emailCliente){
+    alert("Complete todos los campos"); return;
+  }
+
+  // Generar PDF
+  const element = document.getElementById("contrato");
+  const canvasPDF = await html2canvas(element,{scale:1.5});
+  const imgData = canvasPDF.toDataURL("image/png");
+  const pdf = new jsPDF("p","mm","a4");
+  pdf.addImage(imgData,"PNG",10,10,190,canvasPDF.height*190/canvasPDF.width);
+
+  // Descargar PDF local
+  pdf.save("Contrato_" + nombre + ".pdf");
+
+  // Enviar al backend
+  const formData = new FormData();
+  formData.append("pdf", pdf.output("blob"), `Contrato_${numeroContrato}.pdf`);
+  formData.append("nombre", nombre);
+  formData.append("emailCliente", emailCliente);
+  formData.append("numeroContrato", numeroContrato);
+
+  try {
+    const res = await fetch("http://localhost:3000/sendContrato", { method: "POST", body: formData });
+    if(res.ok) alert("Contrato enviado correctamente por correo");
+    else alert("Error enviando el contrato");
+  } catch(e){
+    console.error(e);
+    alert("Error enviando el contrato");
+  }
+}
+</script>
+
+</body>
+</html>
